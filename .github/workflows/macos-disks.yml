@@ -111,7 +111,7 @@ jobs:
         run: |
           git config user.name "macos-disks-ci"
           git config user.email "actions@users.noreply.github.com"
-          git add out/owner/macos-root-pins.json
+          git add -f out/owner/macos-root-pins.json
           git commit -m "owner: macOS 23G93 root policy pins (macos-disks run ${{ github.run_id }})"
           git push origin macOS
 
