@@ -1,0 +1,170 @@
+name: macos-disks
+
+# Build the macOS 14.6.1 (23G93) disks of the DroidVM mainline on a Linux runner:
+# OS.raw (udif-expand, System volume UUID renamed to the one the owner patches name),
+# the SystemOS disk (make-macos-systemos.sh: cryptex content + Data template + shims in a
+# new unsealed APFS volume), then the owner root policies (local-root-policy.py +
+# macos-root-pins.py committed to out/owner/) and the root-policies-macos release asset
+# (make-virt-root.py, consumed by mainline.yml's macos matrix). The disks are uploaded
+# encrypted for flashing on the phone.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  disks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      ARTIFACT_KEY: ${{ secrets.ARTIFACT_KEY }}
+      TAG: '23G93'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: macOS
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake rsync openssl libssl-dev
+          sudo apt-get install -y "linux-headers-$(uname -r)" || sudo apt-get install -y linux-headers-generic || true
+          df -h / /mnt || true
+
+      - name: Big disk layout
+        run: |
+          mkdir -p /mnt/mdwork/out /mnt/mdwork/artifacts /mnt/mdwork/sources /mnt/mdwork/build
+          ln -s /mnt/mdwork/out out
+          ln -s /mnt/mdwork/artifacts artifacts
+          ln -s /mnt/mdwork/sources sources
+          ln -s /mnt/mdwork/build build
+
+      - name: Sources (pinned trees)
+        run: python3 scripts/prepare-sources.py
+
+      - name: Build tools
+        run: |
+          cmake -S sources/lzfse -B build/lzfse -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/lzfse -j "$(nproc)"
+          sudo cmake --install build/lzfse
+          sudo ldconfig
+          make -C sources/apfsprogs -j "$(nproc)"
+          make -C sources/linux-apfs-rw -j "$(nproc)"
+          ls -la sources/apfsprogs/mkapfs/mkapfs sources/linux-apfs-rw/apfs.ko
+
+      - name: Owner key (reuse the iOS root-policies identity)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out/owner/keys
+          chmod 700 out/owner/keys
+          gh release download root-policies --repo "$GITHUB_REPOSITORY" --pattern owner-keys.tar.enc --dir /tmp
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:ARTIFACT_KEY -in /tmp/owner-keys.tar.enc | tar -xz -C out/owner/keys
+          # tar put them under out/owner/keys/keys/ (the release step packed -C keys); flatten.
+          if [ -d out/owner/keys/keys ]; then mv out/owner/keys/keys/* out/owner/keys/ && rmdir out/owner/keys/keys; fi
+          chmod 600 out/owner/keys/owner.pem
+          openssl rsa -in out/owner/keys/owner-public.pem -pubin -modulus -noout
+
+      - name: Fetch IPSW members
+        run: |
+          python3 scripts/macos-fetch-member.py OS
+          python3 scripts/macos-fetch-member.py "Cryptex1,SystemOS"
+          ls -la artifacts/$TAG
+
+      - name: OS raw (expand + rename System volume UUID)
+        run: |
+          python3 scripts/udif-expand.py artifacts/$TAG/090-91706-091.dmg out/os-$TAG.raw
+          python3 scripts/apfs-volumes.py out/os-$TAG.raw 209732608
+          SYS_UUID=$(python3 scripts/apfs-volumes.py out/os-$TAG.raw 209732608 | python3 -c "
+          import sys, re
+          for line in sys.stdin:
+              if ' role System ' in f' {line} ':
+                  print(re.search(r'uuid ([0-9A-F-]{36})', line).group(1)); break")
+          echo "System volume UUID: $SYS_UUID"
+          python3 scripts/apfs-volumes.py out/os-$TAG.raw 209732608 --set-uuid "$SYS_UUID" 04769D26-2CA0-4825-B443-E2E5F88300F2
+          rm -f artifacts/$TAG/090-91706-091.dmg
+          df -h /mnt/mdwork
+
+      - name: SystemOS disk
+        run: |
+          bash scripts/make-macos-systemos.sh sources/apfsprogs sources/linux-apfs-rw/apfs.ko \
+            "artifacts/$TAG/090-91768-091.dmg" "out/os-$TAG.raw" "out/systemos-$TAG.img"
+          rm -f "artifacts/$TAG/090-91768-091.dmg"
+
+      - name: Owner policies (local-root-policy + pins)
+        run: |
+          python3 scripts/local-root-policy.py --image out/os-$TAG.raw \
+            --volume-uuid 04769D26-2CA0-4825-B443-E2E5F88300F2 \
+            --output out/owner/os-$TAG --image-origin transformed
+          python3 scripts/local-root-policy.py --image out/systemos-$TAG.img \
+            --volume-uuid 8846FE78-2910-4297-AF97-D59BB6F8FC16 \
+            --output out/owner/systemos-$TAG --image-origin transformed
+          rm -f out/owner/macos-root-pins.json
+          python3 scripts/macos-root-pins.py
+
+      - name: root-policies-macos asset (make-virt-root)
+        run: |
+          export VERIFIEDROOT_TOOLS="$PWD/sources/UniXNU/kits/VerifiedRoot/tools"
+          export ARTIFACT_KEY_FILE="$RUNNER_TEMP/ci-artifact-key"
+          printf '%s' "$ARTIFACT_KEY" > "$ARTIFACT_KEY_FILE"
+          python3 scripts/make-virt-root.py "out/os-$TAG.raw" "out/systemos-$TAG.img" out/owner/keys out/virt-root
+          ls -la out/virt-root
+
+      - name: Commit pins
+        run: |
+          git config user.name "macos-disks-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add out/owner/macos-root-pins.json
+          git commit -m "owner: macOS 23G93 root policy pins (macos-disks run ${{ github.run_id }})"
+          git push origin macOS
+
+      - name: Release root-policies-macos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view root-policies-macos -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload root-policies-macos -R "$GITHUB_REPOSITORY" out/virt-root/verified-root-inputs.tar.enc --clobber
+          else
+            gh release create root-policies-macos -R "$GITHUB_REPOSITORY" out/virt-root/verified-root-inputs.tar.enc \
+              --title "owner root policies (macOS 23G93)" \
+              --notes "verified-root-inputs.tar.enc = OS + SystemOS VerifiedRoot manifests of the locally built 23G93 disks (make-virt-root.py); pins committed at out/owner/macos-root-pins.json"
+          fi
+
+      - name: Encrypt disks
+        run: |
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ARTIFACT_KEY \
+            -in "out/os-$TAG.raw" -out "os-$TAG.raw.enc"
+          rm -f "out/os-$TAG.raw"
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ARTIFACT_KEY \
+            -in "out/systemos-$TAG.img" -out "systemos-$TAG.img.enc"
+          rm -f "out/systemos-$TAG.img"
+          tar -czf owner-reports.tgz -C out/owner os-$TAG systemos-$TAG macos-root-pins.json
+          ls -la *.enc owner-reports.tgz
+
+      - name: Upload OS disk (encrypted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-disk-23G93
+          path: os-23G93.raw.enc
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload SystemOS disk (encrypted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: systemos-disk-23G93
+          path: systemos-23G93.img.enc
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload policy reports (plain)
+        uses: actions/upload-artifact@v4
+        with:
+          name: owner-reports-23G93
+          path: owner-reports.tgz
+          retention-days: 14
+          if-no-files-found: ignore
