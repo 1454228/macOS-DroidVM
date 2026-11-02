@@ -35,11 +35,10 @@ jobs:
 
       - name: Big disk layout
         run: |
-          sudo mkdir -p /mnt/mdwork/out /mnt/mdwork/artifacts /mnt/mdwork/sources /mnt/mdwork/build
+          sudo mkdir -p /mnt/mdwork/out /mnt/mdwork/artifacts /mnt/mdwork/build
           sudo chown -R "$(id -u):$(id -g)" /mnt/mdwork
           ln -s /mnt/mdwork/out out
           ln -s /mnt/mdwork/artifacts artifacts
-          ln -s /mnt/mdwork/sources sources
           ln -s /mnt/mdwork/build build
 
       - name: Sources (pinned trees)
@@ -51,7 +50,7 @@ jobs:
           cmake --build build/lzfse -j "$(nproc)"
           sudo cmake --install build/lzfse
           sudo ldconfig
-          make -C sources/apfsprogs -j "$(nproc)"
+          make -C sources/apfsprogs/mkapfs -j "$(nproc)"
           make -C sources/linux-apfs-rw -j "$(nproc)"
           ls -la sources/apfsprogs/mkapfs/mkapfs sources/linux-apfs-rw/apfs.ko
 
