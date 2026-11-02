@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / 'UniXNU' / 'scripts'))
 from unixnu.ipsw import Ipsw  # noqa: E402
-from unixnu import udif  # noqa: E402
+import unixnu.udif as udif  # noqa: E402
 
 
 class Ctx:
