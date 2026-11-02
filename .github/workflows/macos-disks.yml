@@ -80,7 +80,7 @@ jobs:
           echo "System volume UUID: $SYS_UUID"
           python3 scripts/apfs-volumes.py out/os-$TAG.raw 209732608 --set-uuid "$SYS_UUID" 04769D26-2CA0-4825-B443-E2E5F88300F2
           rm -f artifacts/$TAG/090-91706-091.dmg
-          df -h /mnt/mdwork
+          df -h /
 
       - name: SystemOS disk
         run: |
