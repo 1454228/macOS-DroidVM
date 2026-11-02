@@ -42,7 +42,7 @@ jobs:
           git -C UniXNU checkout "$UNIXNU_REF"
           git -C UniXNU submodule update --init --recursive --filter=blob:none
           cp -R ci/device/UniXNU-droidvm device
-          ls device/board.toml UniXNU/VerifiedRoot/tools/manifest.py
+          ls device/board.toml UniXNU/kits/VerifiedRoot/tools/manifest.py
 
       - name: Owner key
         run: |
@@ -62,7 +62,7 @@ jobs:
 
       - name: Policies (make-virt-root)
         run: |
-          export VERIFIEDROOT_TOOLS="$GITHUB_WORKSPACE/UniXNU/VerifiedRoot/tools"
+          export VERIFIEDROOT_TOOLS="$GITHUB_WORKSPACE/UniXNU/kits/VerifiedRoot/tools"
           export ARTIFACT_KEY_FILE="$RUNNER_TEMP/ci-artifact-key"
           printf '%s' "$ARTIFACT_KEY" > "$ARTIFACT_KEY_FILE"
           python3 ci/scripts/make-virt-root.py OS.raw SYSTEMOS.dmg keys out
