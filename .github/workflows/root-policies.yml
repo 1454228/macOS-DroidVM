@@ -1,0 +1,84 @@
+name: root-policies
+
+# Owner root policies of the OS and SystemOS disks (scripts/make-virt-root.py), built in CI:
+# downloads the board IPSW (21H461), extracts the OS and Cryptex1,SystemOS members, expands the
+# OS image to a raw disk, hashes and signs both with a freshly generated owner key, and publishes
+# verified-root-inputs.tar.enc as the release asset root-policies (consumed by kernel.yml's
+# "Owner root policies" step). owner-keys.tar.enc keeps the signing key (encrypted with
+# ARTIFACT_KEY): reuse it to regenerate consistent policies later.
+
+on:
+  workflow_dispatch:
+    inputs:
+      unixnu_ref:
+        description: UniXNU commit or branch (VerifiedRoot tools come from its submodule)
+        default: fb2bb310564ce66779e472a021881cf7c5764919
+      runner:
+        description: macOS runner image
+        default: macos-26
+
+jobs:
+  policies:
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    timeout-minutes: 240
+    env:
+      UNIXNU_REF: ${{ inputs.unixnu_ref || 'fb2bb310564ce66779e472a021881cf7c5764919' }}
+      ARTIFACT_KEY: ${{ secrets.ARTIFACT_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Toolchain
+        run: brew install lzfse
+
+      - name: Sources
+        run: |
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git UniXNU
+          git -C UniXNU checkout "$UNIXNU_REF"
+          git -C UniXNU submodule update --init --recursive --filter=blob:none
+          cp -R ci/device/UniXNU-droidvm device
+          ls device/board.toml UniXNU/VerifiedRoot/tools/manifest.py
+
+      - name: Owner key
+        run: |
+          mkdir keys
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out keys/owner.pem
+          openssl pkey -in keys/owner.pem -pubout -out keys/owner-public.pem
+          openssl rsa -pubin -in keys/owner-public.pem -modulus -noout
+
+      - name: IPSW
+        run: |
+          url=$(python3 -c "import tomllib; print(tomllib.load(open('device/board.toml','rb'))['ipsw']['url'])")
+          echo "downloading $url"
+          curl -L --retry 5 --retry-all-errors -C - -o ipsw.ipsw "$url"
+          python3 ci/scripts/ci-root-policies.py
+          rm -f ipsw.ipsw
+          ls -la OS.raw SYSTEMOS.dmg
+
+      - name: Policies (make-virt-root)
+        run: |
+          export VERIFIEDROOT_TOOLS="$GITHUB_WORKSPACE/UniXNU/VerifiedRoot/tools"
+          export ARTIFACT_KEY_FILE="$RUNNER_TEMP/ci-artifact-key"
+          printf '%s' "$ARTIFACT_KEY" > "$ARTIFACT_KEY_FILE"
+          python3 ci/scripts/make-virt-root.py OS.raw SYSTEMOS.dmg keys out
+          ls -la out
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf owner-keys.tgz -C keys owner.pem owner-public.pem
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ARTIFACT_KEY -in owner-keys.tgz -out owner-keys.tar.enc
+          if gh release view root-policies >/dev/null 2>&1; then
+            gh release upload root-policies out/verified-root-inputs.tar.enc owner-keys.tar.enc --clobber
+          else
+            gh release create root-policies out/verified-root-inputs.tar.enc owner-keys.tar.enc \
+              --title "owner root policies" \
+              --notes "verified-root-inputs.tar.enc = OS + SystemOS VerifiedRoot manifests (make-virt-root.py, 21H461 images); owner-keys.tar.enc = the owner signing key, encrypted with ARTIFACT_KEY"
+          fi
+          gh release view root-policies --json assets -q '.assets[].name'

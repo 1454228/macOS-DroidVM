@@ -35,7 +35,7 @@ archives = [
   "build-arm-driver.py NativeAES",
   "build-native-aes-bindings.py",
   "prepare-storage-abi.py",
-  "build-verified-root-probe.py --component os --include-systemos",
+  "build-virt-verified-root.py",
   "build-arm-driver.py NativeVirtioBlock --verified-root --verified-root-bundle",
   "build-native-virtio-bindings.py --component NativeVirtioBlock --directory build/native-virtio-block-verified-bundle",
   "build-arm-driver.py NativeRamBlock",
