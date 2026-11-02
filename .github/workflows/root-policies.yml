@@ -20,6 +20,8 @@ on:
 jobs:
   policies:
     runs-on: ${{ inputs.runner || 'macos-26' }}
+    permissions:
+      contents: write
     timeout-minutes: 240
     env:
       UNIXNU_REF: ${{ inputs.unixnu_ref || 'fb2bb310564ce66779e472a021881cf7c5764919' }}
