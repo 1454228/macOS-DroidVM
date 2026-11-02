@@ -74,11 +74,11 @@ jobs:
         run: |
           tar -czf owner-keys.tgz -C keys owner.pem owner-public.pem
           openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ARTIFACT_KEY -in owner-keys.tgz -out owner-keys.tar.enc
-          if gh release view root-policies >/dev/null 2>&1; then
-            gh release upload root-policies out/verified-root-inputs.tar.enc owner-keys.tar.enc --clobber
+          if gh release view root-policies -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload root-policies -R "$GITHUB_REPOSITORY" out/verified-root-inputs.tar.enc owner-keys.tar.enc --clobber
           else
-            gh release create root-policies out/verified-root-inputs.tar.enc owner-keys.tar.enc \
+            gh release create root-policies -R "$GITHUB_REPOSITORY" out/verified-root-inputs.tar.enc owner-keys.tar.enc \
               --title "owner root policies" \
               --notes "verified-root-inputs.tar.enc = OS + SystemOS VerifiedRoot manifests (make-virt-root.py, 21H461 images); owner-keys.tar.enc = the owner signing key, encrypted with ARTIFACT_KEY"
           fi
-          gh release view root-policies --json assets -q '.assets[].name'
+          gh release view root-policies -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name'
