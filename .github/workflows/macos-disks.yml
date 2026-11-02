@@ -35,7 +35,8 @@ jobs:
 
       - name: Big disk layout
         run: |
-          mkdir -p /mnt/mdwork/out /mnt/mdwork/artifacts /mnt/mdwork/sources /mnt/mdwork/build
+          sudo mkdir -p /mnt/mdwork/out /mnt/mdwork/artifacts /mnt/mdwork/sources /mnt/mdwork/build
+          sudo chown -R "$(id -u):$(id -g)" /mnt/mdwork
           ln -s /mnt/mdwork/out out
           ln -s /mnt/mdwork/artifacts artifacts
           ln -s /mnt/mdwork/sources sources
