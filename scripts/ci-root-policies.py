@@ -11,7 +11,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'UniXNU' / 'scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / 'UniXNU' / 'scripts'))
 from unixnu.ipsw import Ipsw  # noqa: E402
 from unixnu import udif  # noqa: E402
 
