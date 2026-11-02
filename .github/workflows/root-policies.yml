@@ -82,3 +82,4 @@ jobs:
               --notes "verified-root-inputs.tar.enc = OS + SystemOS VerifiedRoot manifests (make-virt-root.py, 21H461 images); owner-keys.tar.enc = the owner signing key, encrypted with ARTIFACT_KEY"
           fi
           gh release view root-policies --json assets -q '.assets[].name'
+# touch: force workflow indexing
