@@ -29,8 +29,8 @@ class Ctx:
 
 def main():
     ipsw = Ipsw(Ctx())
-    os_dmg = ipsw.disk_image('OS')
-    systemos = ipsw.disk_image('Cryptex1,SystemOS')
+    os_dmg = ipsw.extract('OS')
+    systemos = ipsw.extract('Cryptex1,SystemOS')
     subprocess.run(['hdiutil', 'convert', str(os_dmg), '-format', 'UDRW', '-o', 'OSraw'], check=True)
     converted = [p for p in glob.glob('OSraw*')]
     if len(converted) != 1:
