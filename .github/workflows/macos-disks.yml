@@ -50,7 +50,7 @@ jobs:
           cmake --build build/lzfse -j "$(nproc)"
           sudo cmake --install build/lzfse
           sudo ldconfig
-          make -C sources/apfsprogs -j "$(nproc)"
+          make -C sources/apfsprogs/mkapfs -j "$(nproc)"
           make -C sources/linux-apfs-rw -j "$(nproc)"
           ls -la sources/apfsprogs/mkapfs/mkapfs sources/linux-apfs-rw/apfs.ko
 
