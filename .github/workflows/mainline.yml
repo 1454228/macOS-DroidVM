@@ -48,7 +48,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [ios, macos]
+        # macOS only: the ios side (iPadOS 21H461 policies) is not our target and doubles the build time.
+        root: [macos]
     env:
       BOARD: droidvm
       LABEL: ${{ matrix.root == 'ios' && 'mainline' || 'mainline-macos' }}
